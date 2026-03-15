@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scale=no">
+<title>MedSimplify - Medical Document Simplifier</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/marked@11.1.1/marked.min.js"></script>
+<script src="https://unpkg.com/dompurify@3.0.6/dist/purify.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'sans-serif'] },
+      colors: {
+        brand: { 50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a5f' },
+        calm: { 50:'#f0fdf4',100:'#dcfce7',200:'#bbf7d0',500:'#22c55e',600:'#16a34a',700:'#15803d' },
+        warm: { 50:'#fffbeb',100:'#fef3c7',500:'#f59e0b',600:'#d97706' }
+      }
+    }
+  }
+}
+</script>
+<style>
+* { -webkit-tap-highlight-color: transparent; }
+body { font-family: 'Inter', sans-serif; }
+.slide-in { animation: slideIn 0.3s ease-out; }
+@keyframes slideIn { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+.fade-in { animation: fadeIn 0.4s ease-out; }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+.pulse-gentle { animation: pulseGentle 2s infinite; }
+@keyframes pulseGentle { 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.02); } }
+.reading-level-slider::-webkit-slider-thumb { -webkit-appearance:none; width:28px; height:28px; border-radius:50%; background:#2563eb; cursor:pointer; border:3px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+.reading-level-slider::-moz-range-thumb { width:28px; height:28px; border-radius:50%; background:#2563eb; cursor:pointer; border:3px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+.risk-flag { border-left: 4px solid #ef4444; background: #fef2f2; }
+.action-flag { border-left: 4px solid #22c55e; background: #f0fdf4; }
+.info-flag { border-left: 4px solid #3b82f6; background: #eff6ff; }
+.chat-bubble-user { background: #2563eb; color: white; border-radius: 18px 18px 4px 18px; }
+.chat-bubble-ai { background: #f1f5f9; color: #1e293b; border-radius: 18px 18px 18px 4px; }
+textarea:focus, input:focus, select:focus { outline: none; ring: 2px; }
+.spinner { border: 3px solid #e5e7eb; border-top: 3px solid #2563eb; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.8s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tab-active { border-bottom: 3px solid #2563eb; color: #2563eb; font-weight: 600; }
+.tab-inactive { border-bottom: 3px solid transparent; color: #64748b; }
+.checklist-item input[type="checkbox"] { width: 22px; height: 22px; accent-color: #2563eb; }
+@media print {
+  .no-print { display: none !important; }
+  body { font-size: 14px; }
+}
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- Global Token Tracking -->
+<script>
+window.aiTotalInputTokens = 0;
+window.aiTotalOutputTokens = 0;
+window.aiTotalTime = 0;
+window.aiAliasTimes = {};
+</script>
+
+<div id="app" class="max-w-lg mx-auto pb-24">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-100 sticky top-0 z-50 px-4 py-3 shadow-sm">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white text-lg">📋</div>
+        <div>
+          <h1 class="text-lg font-bold text-brand-900 leading-tight">MedSimplify</h1>
+          <p class="text-xs text-gray-400">Plain-language medical docs</p>
+        </div>
+      </div>
+      <button onclick="showSettings()" class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 transition" aria-label="Settings">
+        <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main id="mainContent" class="px-4 pt-4">
+
+    <!-- Welcome / Upload Section -->
+    <section id="uploadSection" class="slide-in">
+      <!-- Onboarding hint -->
+      <div id="onboardingHint" class="bg-brand-50 border border-brand-200 rounded-2xl p-4 mb-4">
+        <div class="flex items-start gap-3">
+          <span class="text-2xl">👋</span>
+          <div>
+            <p class="font-semibold text-brand-800 text-sm">Welcome to MedSimplify!</p>
+            <p class="text-xs text-brand-700 mt-1">Paste or upload your medical document below. We'll turn it into easy-to-understand language while keeping all the important details. <span class="font-medium">Your data stays private.</span></p>
+            <button onclick="dismissOnboarding()" class="mt-2 text-xs text-brand-600 underline">Got it, don't show again</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Document Input -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">📄 Your Medical Document</label>
+        <textarea id="docInput" rows="6" class="w-full border border-gray-200 rounded-xl p-3 text-sm text-gray-700 resize-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition" placeholder="Paste your discharge summary, consent form, lab results, or doctor's notes here...&#10;&#10;Example: 'Patient diagnosed with Type 2 DM with A1C of 8.2%. Initiate metformin 500mg BID. Follow-up in 3 months with CBC and CMP...'"></textarea>
+        
+        <!-- File Upload -->
+        <div class="mt-3 flex items-center gap-2">
+          <label class="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-100 transition text-sm text-gray-600 min-h-[44px]">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+            Upload file
+            <input type="file" id="fileInput" accept=".txt,.pdf,.doc,.docx" class="hidden" onchange="handleFileUpload(event)">
+          </label>
+          <span id="fileName" class="text-xs text-gray-400"></span>
+        </div>
+      </div>
+
+      <!-- Quick Profile -->
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <label class="text-sm font-semibold text-gray-700">👤 Your Profile</label>
+          <span class="text-xs text-gray-400">Helps personalize results</span>
+        </div>
+        
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">Reading Level Preference</label>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-gray-400">Simple</span>
+              <input type="range" id="readingLevel" min="1" max="5" value="2" class="reading-level-slider flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+              <span class="text-xs text-gray-400">Detailed</span>
+            </div>
+            <p id="readingLevelLabel" class="text-xs text-brand-600 mt-1 text-center font-medium">Easy to understand (Grade 6-8)</p>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-gray-500 mb-1 block">Language</label>
+              <select id="language" class="w-full border border-gray-200 rounded-xl p-2.5 text-sm min-h-[44px] bg-white">
+                <option value="English">English</option>
+                <option value="Spanish">Español</option>
+                <option value="Chinese">中文</option>
+                <option value="Vietnamese">Tiếng Việt</option>
+                <option value="Korean">한국어</option>
+                <option value="Tagalog">Tagalog</option>
+                <option value="Arabic">العربية</option>
+                <option value="French">Français</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 mb-1 block">Age Range</label>
+              <select id="ageRange" class="w-full border border-gray-200 rounded-xl p-2.5 text-sm min-h-[44px] bg-white">
+                <option value="30-40">30-40</option>
+                <option value="40-50" selected>40-50</option>
+                <option value="50-60">50-60</option>
+                <option value="60-70">60-70</option>
+                <option value="70+">70+</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">Current Medications (optional)</label>
+            <input type="text" id="medications" class="w-full border border-gray-200 rounded-xl p-2.5 text-sm min-h-[44px]" placeholder="e.g., metformin, lisinopril, aspirin">
+          </div>
+
+          <div>
+            <label class="text-xs text-gray-500 mb-1 block">Allergies (optional)</label>
+            <input type="text" id="allergies" class="w-full border border-gray-200 rounded-xl p-2.5 text-sm min-h-[44px]" placeholder="e.g., penicillin, sulfa drugs">
+          </div>
+        </div>
+      </div>
+
+      <!-- Simplify Button -->
+      <button id="simplifyBtn" onclick="simplifyDocument()" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-4 rounded-2xl text-base shadow-lg shadow-brand-200 transition-all active:scale-[0.98] min-h-[56px] pulse-gentle flex items-center justify-center gap-2">
+        <span>✨</span> Simplify My Document
+      </button>
+
+      <!-- Previous Documents -->
+      <div id="historySection" class="mt-6 hidden">
+        <h3 class="text-sm font-semibold text-gray-500 mb-3">📁 Previous Documents</h3>
+        <div id="historyList" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- Results Section (hidden initially) -->
+    <section id="resultsSection" class="hidden">
+      <!-- Back button -->
+      <button onclick="goBack()" class="flex items-center gap-2 text-brand-600 text-sm font-medium mb-4 min-h-[44px] no-print">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+        New Document
+      </button>
+
+      <!-- Tabs -->
+      <div class="flex border-b border-gray-200 mb-4 no-print overflow-x-auto" id="resultTabs">
+        <button onclick="switchTab('summary')" class="tab-active px-4 py-3 text-sm whitespace-nowrap min-h-[44px]" data-tab="summary">📝 Summary</button>
+        <button onclick="switchTab('actions')" class="tab-inactive px-4 py-3 text-sm whitespace-nowrap min-h-[44px]" data-tab="actions">✅ Actions</button>
+        <button onclick="switchTab('qa')" class="tab-inactive px-4 py-3 text-sm whitespace-nowrap min-h-[44px]" data-tab="qa">💬 Ask Q&A</button>
+        <button onclick="switchTab('caregiver')" class="tab-inactive px-4 py-3 text-sm whitespace-nowrap min-h-[44px]" data-tab="caregiver">👨‍👩‍👧 Caregiver</button>
+      </div>
+
+      <!-- Summary Tab -->
+      <div id="tab-summary" class="tab-content">
+        <!-- Reading level toggle -->
+        <div class="flex items-center gap-2 mb-4 no-print">
+          <span class="text-xs text-gray-500">Detail:</span>
+          <button onclick="setDetailLevel('simple')" id="detailSimple" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-600 text-white min-h-[36px]">Simple</button>
+          <button onclick="setDetailLevel('moderate')" id="detailModerate" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 min-h-[36px]">Moderate</button>
+          <button onclick="setDetailLevel('detailed')" id="detailDetailed" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 min-h-[36px]">Detailed</button>
+        </div>
+        <div id="summaryContent" class="space-y-4"></div>
+      </div>
+
+      <!-- Actions Tab -->
+      <div id="tab-actions" class="tab-content hidden">
+        <div id="actionsContent" class="space-y-3"></div>
+      </div>
+
+      <!-- Q&A Tab -->
+      <div id="tab-qa" class="tab-content hidden">
+        <div id="chatMessages" class="space-y-3 mb-4 max-h-[50vh] overflow-y-auto"></div>
+        <!-- Suggested Questions -->
+        <div id="suggestedQuestions" class="mb-3 space-y-2"></div>
+        <div class="flex gap-2 no-print">
+          <input type="text" id="chatInput" class="flex-1 border border-gray-200 rounded-xl p-3 text-sm min-h-[44px]" placeholder="Ask about your document..." onkeydown="if(event.key==='Enter')sendChat()">
+          <button onclick="sendChat()" class="bg-brand-600 text-white px-4 rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Caregiver Tab -->
+      <div id="tab-caregiver" class="tab-content hidden">
+        <div id="caregiverContent" class="space-y-4"></div>
+        <div class="mt-4 no-print">
+          <button onclick="generateCaregiverVersion()" class="w-full bg-calm-600 hover:bg-calm-700 text-white font-medium py-3 rounded-xl text-sm min-h-[44px] flex items-center justify-center gap-2">
+            <span>👨‍👩‍👧</span> Generate Caregiver Version
+          </button>
+        </div>
+      </div>
+
+      <!-- Action Bar -->
+      <div class="mt-6 flex gap-3 no-print">
+        <button onclick="printSummary()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 rounded-xl text-sm min-h-[44px] flex items-center justify-center gap-2">
+          🖨️ Print
+        </button>
+        <button onclick="exportSummary()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 rounded-xl text-sm min-h-[44px] flex items-center justify-center gap-2">
+          📤 Share
+        </button>
+      </div>
+
+      <!-- Clinician Questions -->
+      <div id="clinicianQuestions" class="mt-6 bg-warm-50 border border-warm-100 rounded-2xl p-4">
+        <h3 class="font-semibold text-sm text-warm-600 mb-2">🩺 Questions to Ask Your Doctor</h3>
+        <div id="clinicianQuestionsList" class="space-y-2"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-end justify-center">
+    <div class="bg-white rounded-t-3xl w-full max-w-lg p-6 slide-in max-h-[80vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-gray-800">⚙️ Settings</h2>
+        <button onclick="closeSettings()" class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 min-h-[44px]">✕</button>
+      </div>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="text-sm font-medium text-gray-700 block mb-1">Cultural Context / Background</label>
+          <select id="culturalContext" class="w-full border border-gray-200 rounded-xl p-2.5 text-sm min-h-[44px]">
+            <option value="general">General / No preference</option>
+            <option value="hispanic_latino">Hispanic / Latino</option>
+            <option value="african_american">African American</option>
+            <option value="asian_pacific">Asian / Pacific Islander</option>
+            <option value="south_asian">South Asian</option>
+            <option value="middle_eastern">Middle Eastern</option>
+            <option value="native_american">Native American</option>
+            <option value="european">European</option>
+          </select>
+          <p class="text-xs text-gray-400 mt-1">Helps us explain things in culturally relevant ways</p>
+        </div>
+        
+        <div>
+          <label class="text-sm font-medium text-gray-700 block mb-1">Health Priorities</label>
+          <input type="text" id="healthPriorities" class="w-full border border-gray-200 rounded-xl p-2.5 text-sm min-h-[44px]" placeholder="e.g., managing diabetes, heart health, pain management">
+        </div>
+
+        <div>
+          <label class="text-sm font-medium text-gray-700 block mb-1">Caregiver Name (optional)</label>
+          <input type="text" id="caregiverName" class="w-full border border-gray-200 rounded-xl p-2.5 text-sm min-h-[44px]" placeholder="e.g., Maria (daughter)">
+        </div>
+
+        <div class="flex items-center justify-between">
+          <label class="text-sm font-medium text-gray-700">Large Text</label>
+          <button id="largeTextToggle" onclick="toggleLargeText()" class="w-12 h-7 bg-gray-200 rounded-full relative transition-colors min-h-[28px]">
+            <div id="largeTextDot" class="w-5 h-5 bg-white rounded-full absolute top-1 left-1 transition-transform shadow"></div>
+          </button>
+        </div>
+
+        <button onclick="clearAllData()" class="w-full border border-red-200 text-red-600 py-3 rounded-xl text-sm min-h-[44px] hover:bg-red-50 transition">
+          🗑️ Clear All Saved Data
+        </button>
+
+        <button onclick="closeSettings()" class="w-full bg-brand-600 text-white py-3 rounded-xl font-medium text-sm min-h-[44px]">
+          Save & Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="fixed inset-0 bg-white/90 z-50 hidden flex flex-col items-center justify-center">
+    <div class="text-center">
+      <div class="spinner mx-auto mb-4" style="width:40px;height:40px;border-width:4px;"></div>
+      <p id="loadingText" class="text-brand-700 font-semibold text-sm">Analyzing your document...</p>
+      <p id="loadingSubtext" class="text-gray-400 text-xs mt-2">This may take a moment</p>
+      <div class="mt-4 w-48 h-2 bg-gray-200 rounded-full overflow-hidden mx-auto">
+        <div id="loadingBar" class="h-full bg-brand-500 rounded-full transition-all duration-1000" style="width:0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-xl text-sm shadow-lg hidden z-50 transition-all"></div>
+
+</div>
+
+<script>
+(function() {
+  // State
+  let currentDoc = null;
+  let currentResult = null;
+  let currentDetailLevel = 'simple';
+  let chatHistory = [];
+  let caregiverVersion = null;
+  let largeText = false;
+
+  // Load saved data
+  function loadSavedData() {
+    try {
+      const profile = JSON.parse(localStorage.getItem('ms_profile') || '{}');
+      if (profile.readingLevel) document.getElementById('readingLevel').value = profile.readingLevel;
+      if (profile.language) document.getElementById('language').value = profile.language;
+      if (profile.ageRange) document.getElementById('ageRange').value = profile.ageRange;
+      if (profile.medications) document.getElementById('medications').value = profile.medications;
+      if (profile.allergies) document.getElementById('allergies').value = profile.allergies;
+      if (profile.culturalContext) document.getElementById('culturalContext').value = profile.culturalContext;
+      if (profile.healthPriorities) document.getElementById('healthPriorities').value = profile.healthPriorities;
+      if (profile.caregiverName) document.getElementById('caregiverName').value = profile.caregiverName;
+      if (profile.largeText) { largeText = true; applyLargeText(); }
+      if (localStorage.getItem('ms_onboarding_dismissed')) {
+        document.getElementById('onboardingHint').classList.add('hidden');
+      }
+      updateReadingLevelLabel();
+      loadHistory();
+    } catch(e) {}
+  }
+
+  function saveProfile() {
+    const profile = {
+      readingLevel: document.getElementById('readingLevel').value,
+      language: document.getElementById('language').value,
+      ageRange: document.getElementById('ageRange').value,
+      medications: document.getElementById('medications').value,
+      allergies: document.getElementById('allergies').value,
+      culturalContext: document.getElementById('culturalContext').value,
+      healthPriorities: document.getElementById('healthPriorities').value,
+      caregiverName: document.getElementById('caregiverName').value,
+      largeText: largeText
+    };
+    localStorage.setItem('ms_profile', JSON.stringify(profile));
+  }
+
+  function loadHistory() {
+    const history = JSON.parse(localStorage.getItem('ms_history') || '[]');
+    const section = document.getElementById('historySection');
+    const list = document.getElementById('historyList');
+    if (history.length === 0) { section.classList.add('hidden'); return; }
+    section.classList.remove('hidden');
+    list.innerHTML = '';
+    history.slice(0, 5).forEach((item, i) => {
+      const div = document.createElement('div');
+      div.className = 'bg-white rounded-xl border border-gray-100 p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition min-h-[52px]';
+      div.innerHTML = `
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-700 truncate">${item.title || 'Document ' + (i+1)}</p>
+          <p class="text-xs text-gray-400">${new Date(item.date).toLocaleDateString()}</p>
+        </div>
+        <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      `;
+      div.onclick = () => loadHistoryItem(item);
+      list.appendChild(div);
+    });
+  }
+
+  function saveToHistory(doc, result) {
+    const history = JSON.parse(localStorage.getItem('ms_history') || '[]');
+    const title = result.title || doc.substring(0, 50) + '...';
+    history.unshift({ title, date: new Date().toISOString(), doc, result });
+    if (history.length > 10) history.pop();
+    localStorage.setItem('ms_history', JSON.stringify(history));
+  }
+
+  function loadHistoryItem(item) {
+    currentDoc = item.doc;
+    currentResult = item.result;
+    chatHistory = [];
+    caregiverVersion = null;
+    renderResults();
+  }
+
+  // AI Call Helper
+  async function callAI(prompt, alias = 'genericAI', retries = 3) {
+    const start = Date.now();
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const resp = await fetch('https://16504442930.work/run_prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alias, params: { prompt } })
+        });
+        if (!resp.ok) {
+          const errText = await resp.text();
+          if (attempt === retries - 1) {
+            const friendlyErr = await reformatError(errText);
+            throw new Error(friendlyErr);
+          }
+          continue;
+        }
+        const data = await resp.json();
+        const elapsed = Date.now() - start;
+        window.aiTotalTime += elapsed;
+        if (!window.aiAliasTimes[alias]) window.aiAliasTimes[alias] = 0;
+        window.aiAliasTimes[alias] += elapsed;
+        if (data.input_tokens) window.aiTotalInputTokens += data.input_tokens;
+        if (data.output_tokens) window.aiTotalOutputTokens += data.output_tokens;
+        return data;
+      } catch(e) {
+        if (attempt === retries - 1) throw e;
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+  }
+
+  async function reformatError(errResponse) {
+    try {
+      const result = await callAI(
+        `You are a user-friendly error message formatter. Take this API error response and rewrite it as a helpful, encouraging message that empowers the user to fix the issue. Include the full original error for reference. API Response: ${errResponse}. Return a JSON object with key "message" of type string.`,
+        'genericAI', 1
+      );
+      return result.message || 'Something went wrong. Please try again in a moment.';
+    } catch(e) {
+      return `We encountered an issue. Please try again. (Technical details: ${errResponse})`;
+    }
+  }
+
+  // Loading helpers
+  function showLoading(text, subtext) {
+    document.getElementById('loadingOverlay').classList.remove('hidden');
+    document.getElementById('loadingText').textContent = text || 'Processing...';
+    document.getElementById('loadingSubtext').textContent = subtext || 'This may take a moment';
+    animateLoadingBar();
+  }
+  function hideLoading() {
+    document.getElementById('loadingOverlay').classList.add('hidden');
+    document.getElementById('loadingBar').style.width = '0%';
+  }
+  function animateLoadingBar() {
+    const bar = document.getElementById('loadingBar');
+    let w = 0;
+    const iv = setInterval(() => {
+      if (document.getElementById('loadingOverlay').classList.contains('hidden')) { clearInterval(iv); return; }
+      w = Math.min(w + Math.random() * 15, 90);
+      bar.style.width = w + '%';
+    }, 500);
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    setTimeout(() => t.classList.add('hidden'), 3000);
+  }
+
+  // Main Simplify
+  window.simplifyDocument = async function() {
+    const doc = document.getElementById('docInput').value.trim();
+    if (!doc) { showToast('Please paste or upload a document first'); return; }
+    if (doc.length < 20) { showToast('Document seems too short. Please paste the full text.'); return; }
+
+    saveProfile();
+    currentDoc = doc;
+
+    const readingLevel = document.getElementById('readingLevel').value;
+    const language = document.getElementById('language').value;
+    const ageRange = document.getElementById('ageRange').value;
+    const meds = document.getElementById('medications').value;
+    const allergies = document.getElementById('allergies').value;
+    const cultural = document.getElementById('culturalContext').value;
+    const priorities = document.getElementById('healthPriorities').value;
+
+    const readingDesc = ['very simple (grade 3-5)', 'easy (grade 6-8)', 'moderate (grade 8-10)', 'standard (grade 10-12)', 'detailed (college level)'][readingLevel - 1];
+
+    showLoading('📋 Analyzing your document...', 'Identifying key medical information');
+
+    try {
+      const prompt = `You are a medical document simplifier that preserves clinical nuance. Analyze the following medical document and produce a comprehensive simplified version.
+
+PATIENT PROFILE:
+- Age Range: ${ageRange}
+- Reading Level: ${readingDesc}
+- Language: ${language}
+- Current Medications: ${meds || 'Not specified'}
+- Allergies: ${allergies || 'Not specified'}
+- Cultural Context: ${cultural}
+- Health Priorities: ${priorities || 'Not specified'}
+
+MEDICAL DOCUMENT:
+"""
+${doc}
+"""
+
+INSTRUCTIONS:
+1. Create a simplified version at the requested reading level in ${language}
+2. Preserve ALL clinically important details, warnings, and risks
+3. Flag any risks, contraindications, or urgent items
+4. Create actionable checklist items
+5. Generate questions the patient should ask their doctor
+6. Create three versions: simple, moderate, and detailed
+
+Return a JSON object with EXACTLY this structure:
+{
+  "title": string (a short descriptive title for this document, max 60 chars),
+  "document_type": string (e.g., "Discharge Summary", "Consent Form", "Lab Results", "Prescription", "Clinical Notes"),
+  "simple_summary": string (plain language summary at grade 5-6 level, use short sentences, common words, ${language} language),
+  "moderate_summary": string (moderate detail at grade 8-10 level, includes more medical context, ${language} language),
+  "detailed_summary": string (comprehensive version preserving all clinical detail in accessible language, ${language} language),
+  "risk_flags": [{"text": string, "severity": string ("high"|"medium"|"low"), "explanation": string}] (array of risk/warning items, at least 1 item),
+  "action_items": [{"text": string, "category": string ("medication"|"appointment"|"lifestyle"|"monitoring"|"emergency"), "priority": string ("urgent"|"important"|"routine"), "details": string}] (array of things the patient needs to do),
+  "key_terms": [{"term": string, "plain_meaning": string}] (medical jargon translated to plain language, at least 3 items),
+  "clinician_questions": [string] (5 specific questions the patient should ask their doctor at next visit),
+  "medication_interactions": [string] (any potential interactions with listed medications, empty array if none detected),
+  "visual_aids_descriptions": [{"title": string, "emoji": string, "description": string}] (3-5 visual concept aids using emoji and simple descriptions),
+  "one_line_summary": string (one sentence summary of what this document is about)
+}
+
+CRITICAL RULES:
+- Never omit warnings, risks, or contraindications
+- If the document mentions medication dosages, always include them
+- Flag anything time-sensitive as urgent
+- Use culturally sensitive language appropriate for ${cultural} context
+- All text content must be in ${language}`;
+
+      const result = await callAI(prompt);
+      currentResult = result;
+      saveToHistory(doc, result);
+      loadHistory();
+      renderResults();
+      hideLoading();
+    } catch(e) {
+      hideLoading();
+      showToast('Error: ' + e.message);
+    }
+  };
+
+  function renderResults() {
+    document.getElementById('uploadSection').classList.add('hidden');
+    document.getElementById('resultsSection').classList.remove('hidden');
+    document.getElementById('resultsSection').className = 'slide-in';
+    chatHistory = [];
+    renderSummary();
+    renderActions();
+    renderClinicianQuestions();
+    renderSuggestedQuestions();
+    renderCaregiverPlaceholder();
+    switchTab('summary');
+  }
+
+  function renderSummary() {
+    const container = document.getElementById('summaryContent');
+    if (!currentResult) return;
+
+    const summaryMap = {
+      'simple': currentResult.simple_summary,
+      'moderate': currentResult.moderate_summary,
+      'detailed': currentResult.detailed_summary
+    };
+    const summary = summaryMap[currentDetailLevel] || currentResult.simple_summary;
+
+    let html = '';
+
+    // Title and type
+    html += `<div class="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="px-2 py-1 bg-brand-100 text-brand-700 text-xs rounded-lg font-medium">${currentResult.document_type || 'Medical Document'}</span>
+      </div>
+      <h2 class="font-bold text-gray-800 text-base mb-2">${currentResult.title || 'Your Document Summary'}</h2>
+      <p class="text-sm text-gray-500 mb-3">${currentResult.one_line_summary || ''}</p>
+      <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-line">${DOMPurify.sanitize(summary)}</div>
+    </div>`;
+
+    // Risk Flags
+    if (currentResult.risk_flags && currentResult.risk_flags.length > 0) {
+      html += `<div class="space-y-2">
+        <h3 class="font-semibold text-sm text-red-600 flex items-center gap-1">⚠️ Important Warnings</h3>`;
+      currentResult.risk_flags.forEach(flag => {
+        const sevColor = flag.severity === 'high' ? 'risk-flag' : flag.severity === 'medium' ? 'info-flag' : 'action-flag';
+        const sevEmoji = flag.severity === 'high' ? '🔴' : flag.severity === 'medium' ? '🟡' : '🟢';
+        html += `<div class="${sevColor} rounded-xl p-3">
+          <div class="flex items-start gap-2">
+            <span>${sevEmoji}</span>
+            <div>
+              <p class="font-medium text-sm text-gray-800">${flag.text}</p>
+              <p class="text-xs text-gray-600 mt-1">${flag.explanation}</p>
+            </div>
+          </div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    // Key Terms
+    if (currentResult.key_terms && currentResult.key_terms.length > 0) {
+      html += `<div class="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+        <h3 class="font-semibold text-sm text-gray-700 mb-3">📖 Medical Terms Explained</h3>
+        <div class="space-y-2">`;
+      currentResult.key_terms.forEach(term => {
+        html += `<div class="flex items-start gap-2">
+          <span class="text-brand-500 font-bold text-xs mt-0.5">→</span>
+          <div><span class="font-medium text-sm text-gray-800">${term.term}:</span> <span class="text-sm text-gray-600">${term.plain_meaning}</span></div>
+        </div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    // Visual Aids
+    if (currentResult.visual_aids_descriptions && currentResult.visual_aids_descriptions.length > 0) {
+      html += `<div class="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+        <h3 class="font-semibold text-sm text-gray-700 mb-3">🎨 Visual Guide</h3>
+        <div class="grid grid-cols-1 gap-3">`;
+      currentResult.visual_aids_descriptions.forEach(va => {
+        html += `<div class="bg-gray-50 rounded-xl p-3 flex items-start gap-3">
+          <span class="text-3xl">${va.emoji}</span>
+          <div><p class="font-medium text-sm text-gray-800">${va.title}</p>
+          <p class="text-xs text-gray-600 mt-1">${va.description}</p></div>
+        </div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    // Medication Interactions
+    if (currentResult.medication_interactions && currentResult.medication_interactions.length > 0) {
+      html += `<div class="bg-orange-50 border border-orange-200 rounded-2xl p-4">
+        <h3 class="font-semibold text-sm text-orange-700 mb-2">💊 Medication Notes</h3>
+        <ul class="space-y-1">`;
+      currentResult.medication_interactions.forEach(mi => {
+        html += `<li class="text-sm text-orange-800 flex items-start gap-2"><span>•</span><span>${mi}</span></li>`;
+      });
+      html += `</ul></div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  function renderActions() {
+    const container = document.getElementById('actionsContent');
+    if (!currentResult || !currentResult.action_items) { container.innerHTML = '<p class="text-sm text-gray-400">No action items found.</p>'; return; }
+
+    const priorityOrder = { urgent: 0, important: 1, routine: 2 };
+    const sorted = [...currentResult.action_items].sort((a, b) => (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2));
+
+    const catEmoji = { medication: '💊', appointment: '📅', lifestyle: '🏃', monitoring: '📊', emergency: '🚨' };
+    const priColors = { urgent: 'bg-red-100 text-red-700', important: 'bg-yellow-100 text-yellow-700', routine: 'bg-green-100 text-green-700' };
+
+    let html = `<p class="text-xs text-gray-400 mb-2">Check off items as you complete them</p>`;
+    sorted.forEach((item, i) => {
+      const checked = localStorage.getItem(`ms_check_${i}`) === 'true';
+      html += `<div class="checklist-item bg-white rounded-xl border border-gray-100 p-3 shadow-sm flex items-start gap-3">
+        <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleCheck(${i}, this.checked)" class="mt-0.5 flex-shrink-0">
+        <div class="flex-1">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <span>${catEmoji[item.category] || '📋'}</span>
+            <span class="font-medium text-sm text-gray-800">${item.text}</span>
+            <span class="px-2 py-0.5 text-xs rounded-full ${priColors[item.priority] || priColors.routine}">${item.priority}</span>
+          </div>
+          <p class="text-xs text-gray-600">${item.details}</p>
+        </div>
+      </div>`;
+    });
+    container.innerHTML = html;
+  }
+
+  window.toggleCheck = function(i, checked) {
+    localStorage.setItem(`ms_check_${i}`, checked.toString());
+  };
+
+  function renderClinicianQuestions() {
+    const container = document.getElementById('clinicianQuestionsList');
+    if (!currentResult || !currentResult.clinician_questions) return;
+    container.innerHTML = '';
+    currentResult.clinician_questions.forEach((q, i) => {
+      const div = document.createElement('div');
+      div.className = 'flex items-start gap-2';
+      div.innerHTML = `<span class="text-warm-500 font-bold text-sm">${i + 1}.</span><p class="text-sm text-gray-700">${q}</p>`;
+      container.appendChild(div);
+    });
+  }
+
+  function renderSuggestedQuestions() {
+    const container = document.getElementById('suggestedQuestions');
+    const suggestions = [
+      "What does this mean for my daily routine?",
+      "Are there any side effects I should watch for?",
+      "What should I do if I miss a dose?",
+      "When do I need to see my doctor next?",
+      "Can you explain the risks in simpler terms?"
+    ];
+    container.innerHTML = `<p class="text-xs text-gray-400 mb-1">Quick questions:</p><div class="flex flex-wrap gap-2">`;
+    suggestions.forEach(q => {
+      container.innerHTML += `<button onclick="askSuggested('${q.replace(/'/g, "\\'")}')" class="px-3 py-1.5 bg-brand-50 text-brand-700 rounded-full text-xs hover:bg-brand-100 transition min-h-[36px]">${q}</button>`;
+    });
+    container.innerHTML += '</div>';
+  }
+
+  window.askSuggested = function(q) {
+    document.getElementById('chatInput').value = q;
+    sendChat();
+  };
+
+  function renderCaregiverPlaceholder() {
+    const container = document.getElementById('caregiverContent');
+    if (caregiverVersion) {
+      container.innerHTML = `<div class="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+        <h3 class="font-semibold text-sm text-gray-700 mb-2">👨‍👩‍👧 Caregiver Summary</h3>
+        <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-line">${DOMPurify.sanitize(caregiverVersion)}</div>
+      </div>`;
+    } else {
+      const caregiverName = document.getElementById('caregiverName').value || 'your caregiver';
+      container.innerHTML = `<div class="bg-calm-50 rounded-2xl border border-calm-200 p-4 text-center">
+        <span class="text-3xl">👨‍👩‍👧‍👦</span>
+        <p class="text-sm text-gray-600 mt-2">Generate a simplified version for <strong>${caregiverName}</strong> that highlights what they need to know to help you.</p>
+      </div>`;
+    }
+  }
+
+  window.generateCaregiverVersion = async function() {
+    if (!currentResult) return;
+    const caregiverName = document.getElementById('caregiverName').value || 'the caregiver';
+    showLoading('👨‍👩‍👧 Creating caregiver version...', `Tailored for ${caregiverName}`);
+
+    try {
+      const prompt = `You are creating a caregiver-friendly version of a medical document summary. The caregiver is: "${caregiverName}".
+
+ORIGINAL DOCUMENT SUMMARY:
+"""
+${currentResult.detailed_summary}
+"""
+
+ACTION ITEMS:
+${JSON.stringify(currentResult.action_items)}
+
+RISK FLAGS:
+${JSON.stringify(currentResult.risk_flags)}
+
+Create a caregiver-focused summary that:
+1. Explains what the patient needs help with
+2. Lists warning signs to watch for
+3. Provides medication reminders and schedules
+4. Notes when to call the doctor
+5. Uses simple, clear language (grade 6 level)
+6. Is warm, supportive, and action-oriented
+
+Return a JSON object with key "caregiver_summary" of type string (the complete caregiver summary text, using line breaks for readability).`;
+
+      const result = await callAI(prompt);
+      caregiverVersion = result.caregiver_summary;
+      renderCaregiverPlaceholder();
+      hideLoading();
+      showToast('Caregiver version ready! 👨‍👩‍👧');
+    } catch(e) {
+      hideLoading();
+      showToast('Error: ' + e.message);
+    }
+  };
+
+  // Chat / Q&A
+  window.sendChat = async function() {
+    const input = document.getElementById('chatInput');
+    const question = input.value.trim();
+    if (!question) return;
+    input.value = '';
+
+    addChatBubble(question, 'user');
+    addChatBubble('...', 'ai', true);
+
+    try {
+      const context = currentResult ? `Document type: ${currentResult.document_type}\nSummary: ${currentResult.detailed_summary}\nRisk flags: ${JSON.stringify(currentResult.risk_flags)}\nAction items: ${JSON.stringify(currentResult.action_items)}` : currentDoc;
+
+      const prompt = `You are a helpful, empathetic medical document assistant. A patient is asking about their medical document.
+
+DOCUMENT CONTEXT:
+"""
+${context}
+"""
+
+CONVERSATION HISTORY:
+${chatHistory.map(c => `${c.role}: ${c.text}`).join('\n')}
+
+PATIENT QUESTION: "${question}"
+
+INSTRUCTIONS:
+- Answer clearly at a grade 6-8 reading level
+- Be warm, supportive, and encouraging
+- If you don't know something, say so honestly
+- Always remind them to confirm with their doctor for medical decisions
+- Use simple analogies when helpful
+- Keep the answer concise (2-4 paragraphs max)
+
+Return a JSON object with key "answer" of type string.`;
+
+      const result = await callAI(prompt);
+      removePendingBubble();
+      addChatBubble(result.answer, 'ai');
+      chatHistory.push({ role: 'patient', text: question });
+      chatHistory.push({ role: 'assistant', text: result.answer });
+    } catch(e) {
+      removePendingBubble();
+      addChatBubble('Sorry, I had trouble answering that. Please try again. 💙', 'ai');
+    }
+  };
+
+  function addChatBubble(text, role, isPending = false) {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} ${isPending ? 'pending-bubble' : ''}`;
+    const bubbleClass = role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai';
+    div.innerHTML = `<div class="${bubbleClass} px-4 py-2.5 max-w-[85%] text-sm leading-relaxed">${isPending ? '<div class="spinner" style="width:16px;height:16px;border-width:2px;"></div>' : DOMPurify.sanitize(text)}</div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function removePendingBubble() {
+    const pending = document.querySelector('.pending-bubble');
+    if (pending) pending.remove();
+  }
+
+  // Tab switching
+  window.switchTab = function(tab) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.getElementById('tab-' + tab).classList.remove('hidden');
+    document.querySelectorAll('[data-tab]').forEach(btn => {
+      btn.className = btn.dataset.tab === tab
+        ? 'tab-active px-4 py-3 text-sm whitespace-nowrap min-h-[44px]'
+        : 'tab-inactive px-4 py-3 text-sm whitespace-nowrap min-h-[44px]';
+    });
+  };
+
+  // Detail level
+  window.setDetailLevel = function(level) {
+    currentDetailLevel = level;
+    ['simple', 'moderate', 'detailed'].forEach(l => {
+      const btn = document.getElementById('detail' + l.charAt(0).toUpperCase() + l.slice(1));
+      btn.className = l === level
+        ? 'px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-600 text-white min-h-[36px]'
+        : 'px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 min-h-[36px]';
+    });
+    renderSummary();
+  };
+
+  // Navigation
+  window.goBack = function() {
+    document.getElementById('resultsSection').classList.add('hidden');
+    document.getElementById('uploadSection').classList.remove('hidden');
+    document.getElementById('uploadSection').className = 'slide-in';
+  };
+
+  // File upload
+  window.handleFileUpload = function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    document.getElementById('fileName').textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('docInput').value = e.target.result;
+    };
+    reader.readAsText(file);
+  };
+
+  // Settings
+  window.showSettings = function() {
+    document.getElementById('settingsModal').classList.remove('hidden');
+  };
+  window.closeSettings = function() {
+    document.getElementById('settingsModal').classList.add('hidden');
+    saveProfile();
+  };
+
+  // Large text
+  window.toggleLargeText = function() {
+    largeText = !largeText;
+    applyLargeText();
+    saveProfile();
+  };
+  function applyLargeText() {
+    const toggle = document.getElementById('largeTextToggle');
+    const dot = document.getElementById('largeTextDot');
+    if (largeText) {
+      document.body.style.fontSize = '18px';
+      toggle.classList.remove('bg-gray-200');
+      toggle.classList.add('bg-brand-600');
+      dot.style.transform = 'translateX(20px)';
+    } else {
+      document.body.style.fontSize = '';
+      toggle.classList.remove('bg-brand-600');
+      toggle.classList.add('bg-gray-200');
+      dot.style.transform = 'translateX(0)';
+    }
+  }
+
+  // Reading level label
+  function updateReadingLevelLabel() {
+    const val = document.getElementById('readingLevel').value;
+    const labels = [
+      'Very simple (Grade 3-5)',
+      'Easy to understand (Grade 6-8)',
+      'Moderate detail (Grade 8-10)',
+      'Standard (Grade 10-12)',
+      'Full detail (College level)'
+    ];
+    document.getElementById('readingLevelLabel').textContent = labels[val - 1];
+  }
+
+  // Onboarding
+  window.dismissOnboarding = function() {
+    document.getElementById('onboardingHint').classList.add('hidden');
+    localStorage.setItem('ms_onboarding_dismissed', 'true');
+  };
+
+  // Clear data
+  window.clearAllData = function() {
+    if (confirm('This will delete all your saved profiles and document history. Continue?')) {
+      localStorage.clear();
+      showToast('All data cleared');
+      setTimeout(() => location.reload(), 500);
+    }
+  };
+
+  // Print
+  window.printSummary = function() {
+    window.print();
+  };
+
+  // Share/Export
+  window.exportSummary = async function() {
+    if (!currentResult) return;
+    const text = `${currentResult.title}\n${'='.repeat(40)}\n\n${currentResult.detailed_summary}\n\n--- Action Items ---\n${(currentResult.action_items || []).map(a => '☐ ' + a.text + ': ' + a.details).join('\n')}\n\n--- Questions for Your Doctor ---\n${(currentResult.clinician_questions || []).map((q, i) => (i + 1) + '. ' + q).join('\n')}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: currentResult.title, text });
+      } catch(e) {
+        copyToClipboard(text);
+      }
+    } else {
+      copyToClipboard(text);
+    }
+  };
+
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Copied to clipboard! 📋');
+    }).catch(() => {
+      showToast('Could not copy. Please try again.');
+    });
+  }
+
+  // Event listeners
+  document.getElementById('readingLevel').addEventListener('input', updateReadingLevelLabel);
+
+  // Initialize
+  loadSavedData();
+
+})();
+</script>
+
+</body>
+</html>
